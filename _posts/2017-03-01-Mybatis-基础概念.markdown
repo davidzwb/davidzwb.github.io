@@ -1,0 +1,111 @@
+---
+layout: post
+title:  "Mybatis 基础概念个人理解"
+date:   2017-03-26 01:10:45 +0800
+categories: jekyll update
+---
+# Mybatis 基础概念个人理解
+
+1. Map
+
+   在 Java 中，我们对于数据库的操作，很大程度上就是将数据库中的一个表中的数据，取到 Java 中的一个类的实例中保存，即将数据库中的一个表“映射(Map)”到 Java 中的一个类。
+
+2. Mapper
+
+   Mapper 则是 Mybatis 中很重要的一个概念，根据我的理解，它就是上面提到的逻辑上映射的一个实现，表现形式为一个 Java 类以及其中的方法，之后所有的操作都是围绕这个概念而进行的：
+
+   Mapper 就是进行 Map 动作的类，而不同的 Map 动作（即不同的 SQL 语句），就对应 Mapper 类中不同的方法。
+
+   因此，我们所需要做的就是向 Mybatis 提供必要的信息，然后 Mybatis 帮助我们自动生成这个类中的方法。
+
+3. Java Bean
+
+   既然是要将数据库中的一个表映射到 Java 中的一个类，那么为了方便生成，必须使用 Java Bean 形式的类，举例如下：
+
+   ```java
+   public class Item {
+   	private int id;
+   	private String name;
+   	
+   	public int getId() {
+   		return id;
+   	}
+   	public void setId(int id) {
+   		this.id = id;
+   	}
+   	public String getName() {
+   		return name;
+   	}
+   	public void setName(String name) {
+   		this.name = name;
+   	}
+   }
+   ```
+
+4. Mapper 接口
+
+   由于我们需要 Mybatis 帮我们生成 Mapper 中的方法，方便我们进行不同的“映射”操作，所以我们需要先定义一个 Mapper 接口，里面定义方法的原型，之后 Mybatis 就会帮我们实现，如下：
+
+   ```java
+   public interface ItemMapper {
+   	Item selectItem(int id);//通过一个 id 来从数据库中取回 Item 信息的“映射”操作。
+   }
+   ```
+
+5. ItemMapper.xml
+
+   定义好接口后，我们需要告诉 Mybatis 我们想要这个接口干什么样的“映射”操作，不然 Mybatis 也无从生成。
+
+   有两种方式，通过 xml 文件告诉 Mybatis，或者是通过 Mapper 接口中的 Annotation 注解：
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8" ?>
+   <!DOCTYPE mapper
+     PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+     "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+   <mapper namespace="davidzwb.mybatis.mapper.ItemMapper">
+     <select id="selectItem" parameterType="Integer" resultType="davidzwb.mybatis.item.Item">
+       select * from itemlist where id = #{id}
+     </select>
+   </mapper>
+   ```
+
+   <mapper\> 标签告诉 Mybatis 要生成方法的类是这个。
+
+   <select\> 标签代表一种 Mybatis 预先定好的“映射”操作，id 代表这个“映射”对应类中的哪个方法，parameterType 代表这个方法接收用户传入的参数的类型， resultType 代表要用来装返回数据的 Java Bean 类。
+
+   所以通过这个 xml 文件我们告诉 Mybatis 的是，在 ItemMapper 类中的 selectItem 方法里自动生成，完成的操作是，传入一个 Integer 类型的 id，然后在数据库中执行 "select * from itemlist where id=?"，最后将返回的数据存入 Item 类中。
+
+6. mybatis-config.xml
+
+   除了上述的主要信息外，还有一些必要信息需要告诉 Mybatis：
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8" ?>
+   <!DOCTYPE configuration
+     PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+     "http://mybatis.org/dtd/mybatis-3-config.dtd">
+   <configuration>
+     <environments default="development">
+       <environment id="development">
+         <transactionManager type="JDBC"/>
+         <dataSource type="POOLED">
+           <property name="driver" value="org.postgresql.Driver"/>
+           <property name="url" value="jdbc:postgresql://127.0.0.1:5432/davidzwb"/>
+           <property name="username" value="davidzwb"/>
+           <property name="password" value=""/>
+         </dataSource>
+       </environment>
+     </environments>
+     <mappers>
+       <mapper resource="davidzwb/mybatis/mapper/ItemMapper.xml"/>
+     </mappers>
+   </configuration>
+   ```
+
+   <mapper> 标签告诉 Mybatis 刚才的 Mapper 描述文件的位置。
+
+   <dataSource> 标签告诉 Mybatis 链接数据库所必要的一些参数，如地址、端口、驱动、用户名以及密码。
+
+7. 最后就可以试试编译运行了^_^。
+
