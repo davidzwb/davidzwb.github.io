@@ -229,3 +229,13 @@ struct addrinfo {
    ```
 
    向远端发送”Hello World!“后，关闭连接。
+
+5. 概念梳理
+
+   ### Socket Pair
+
+   当服务器接收到新的连接，并通过 accept 返回新的 socket 时，其实新的 socket 还是使用的和服务器同一个端口，那么如何确定远端想和那个 socket 传输呢？ 
+
+   socket pair {源 ip 地址：源端口，目的 ip 地址：目的端口}，一个 socket pair 唯一确定一个连接。
+
+   ​
