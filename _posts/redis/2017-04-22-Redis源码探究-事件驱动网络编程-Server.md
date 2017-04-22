@@ -1,10 +1,3 @@
----
-layout: post
-title:  "Redis源码探究-事件驱动网络编程-Server"
-date:   2017-04-22 11:20 +0800
-categories: redis
----
-
 # Redis源码探究-事件驱动网络编程-Server 
 
 > 本文使用的是 github 上 Redis 最早的源代码，Redis 1.3.6，发布于 2010 年。
@@ -551,3 +544,130 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
 ```
 
 可以看到， Redis 遍历了整个 TimeEvent 链表，获取当前的时间，与这些 TimeEvent 的触发时间作对比，所有已经超过触发时间的 TimeEvent 统统处理，调用它们的 timeProc 处理函数。
+
+### acceptHandler
+
+到此我们已经了解到 Redis 怎么创建事件、等待事件触发并处理事件的了。
+
+```c
+aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL);
+aeCreateFileEvent(server.el, server.fd, AE_READABLE, acceptHandler, NULL);
+```
+
+我们注意到，在初始化过程中 Redis 仅创建了两个事件，一个 FileEvent，一个 TimeEvent。
+
+这个 TimeEvent 我们可以看出是每 1 毫秒执行一次 serverCron，应该是一些业务相关的东西，在此按下不表。
+
+而这个 FileEvent 监听的是服务器端口的可读事件，是接收客户端连接并处理的地方：
+
+```c
+static void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
+    int cport, cfd;
+    char cip[128];
+    redisClient *c;
+    REDIS_NOTUSED(el);
+    REDIS_NOTUSED(mask);
+    REDIS_NOTUSED(privdata);
+
+    cfd = anetAccept(server.neterr, fd, cip, &cport);
+    if (cfd == AE_ERR) {
+        redisLog(REDIS_VERBOSE,"Accepting client connection: %s", server.neterr);
+        return;
+    }
+    redisLog(REDIS_VERBOSE,"Accepted %s:%d", cip, cport);
+    if ((c = createClient(cfd)) == NULL) {
+        redisLog(REDIS_WARNING,"Error allocating resoures for the client");
+        close(cfd); /* May be already closed, just ingore errors */
+        return;
+    }
+	......
+}
+```
+
+首先 accept 新的连接，返回新连接的 socket fd。 
+
+```c
+static redisClient *createClient(int fd) {
+    redisClient *c = zmalloc(sizeof(*c));
+
+    anetNonBlock(NULL,fd);
+    anetTcpNoDelay(NULL,fd);
+    if (!c) return NULL;
+    selectDb(c,0);
+    c->fd = fd;
+    c->querybuf = sdsempty();
+    c->argc = 0;
+    c->argv = NULL;
+    c->bulklen = -1;
+    c->multibulk = 0;
+    c->mbargc = 0;
+    c->mbargv = NULL;
+    c->sentlen = 0;
+    c->flags = 0;
+    c->lastinteraction = time(NULL);
+    c->authenticated = 0;
+    c->replstate = REDIS_REPL_NONE;
+    c->reply = listCreate();
+    listSetFreeMethod(c->reply,decrRefCount);
+    listSetDupMethod(c->reply,dupClientReplyValue);
+    c->blockingkeys = NULL;
+    c->blockingkeysnum = 0;
+    c->io_keys = listCreate();
+    listSetFreeMethod(c->io_keys,decrRefCount);
+    if (aeCreateFileEvent(server.el, c->fd, AE_READABLE,
+        readQueryFromClient, c) == AE_ERR) {
+        freeClient(c);
+        return NULL;
+    }
+    listAddNodeTail(server.clients,c);
+    initClientMultiState(c);
+    return c;
+}
+```
+
+使用新建的客户端连接创建 redisClient 结构，这里大多是 Client 相关的东西，留待以后研究，重点关注 Server 网络编程相关的事情：
+
+1. Redis 将新连接设置为了非阻塞 IO。
+2. Redis 将新连接的 socket 属性设置为了 TcpNoDelay，如我之前的博客写过，不这样设置的话，因为 Nagle 算法的缘故，会产生不必要的延迟。
+3. 调用 aeCreateFileEvent() 将新连接加入 EventLoop 进行监听，触发条件为 READABLE，处理方法为 readQueryFromClient()，处理结果存放位置为这个 redisClient 结构中。
+
+```c
+#define REDIS_IOBUF_LEN         1024
+
+static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
+    redisClient *c = (redisClient*) privdata;
+    char buf[REDIS_IOBUF_LEN];
+    int nread;
+    REDIS_NOTUSED(el);
+    REDIS_NOTUSED(mask);
+
+    nread = read(fd, buf, REDIS_IOBUF_LEN);
+    if (nread == -1) {
+        if (errno == EAGAIN) {
+            nread = 0;
+        } else {
+            redisLog(REDIS_VERBOSE, "Reading from client: %s",strerror(errno));
+            freeClient(c);
+            return;
+        }
+    } else if (nread == 0) {
+        redisLog(REDIS_VERBOSE, "Client closed connection");
+        freeClient(c);
+        return;
+    }
+    if (nread) {
+        c->querybuf = sdscatlen(c->querybuf, buf, nread);
+        c->lastinteraction = time(NULL);
+    } else {
+        return;
+    }
+    if (!(c->flags & REDIS_BLOCKED))
+        processInputBuffer(c);
+}
+```
+
+当客户端的可读事件触发后，从客户端读取最多 1024 个字节，保存到 redisClient->querybuf 中，最后调用 processInputBuffer() 处理客户端的查询请求。
+
+## 尾声
+
+至此，Redis Server 的初始化流程就研究完了，果然写得很好啊，利用 C 完成了事件驱动的编程，并做了一层抽象，以适应不同的监听 API，学习了！
