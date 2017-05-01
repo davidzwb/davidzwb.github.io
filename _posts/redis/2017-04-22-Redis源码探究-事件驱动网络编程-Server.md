@@ -2,7 +2,7 @@
 
 > 本文使用的是 github 上 Redis 最早的源代码，Redis 1.3.6，发布于 2010 年。
 
-Redis 使用了事件驱动网络编程，其核心是：注册事件，提供回调，非阻塞 IO。
+Redis 使用了事件驱动网络编程，Reactor 模式，其核心是：注册事件，提供回调，非阻塞 IO。
 
 ## EventLoop
 
@@ -671,3 +671,5 @@ static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mas
 ## 尾声
 
 至此，Redis Server 的初始化流程就研究完了，果然写得很好啊，利用 C 完成了事件驱动的编程，并做了一层抽象，以适应不同的监听 API，学习了！
+
+参考文章：https://redis.io/topics/internals-rediseventlib
