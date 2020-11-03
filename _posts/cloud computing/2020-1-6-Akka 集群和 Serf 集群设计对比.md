@@ -83,13 +83,9 @@ Akka 选举机制
 
 检测方法在选定方案后再研究。
 
-## CDCF 集群设计思考
+## 设计思考
 
 可以观察到，除了因 Gossip 机制不同而带来的 Eventual Consistency 性能不同外，Akka 和 Serf 的外在表现最大的不同就是在 Partition 发生时，Akka 选择 Consistency 而 Serf 选择 Availability。
-
-从用户需求看，CDCF 主要会用到集群功能的是 Cluster-Aware Router，Router 在 Partition 发生时只关心自己所在 Partition 的节点情况，对于跨 Partition 的 Consistency 并不关心。
-
-再考虑到 Akka 的架构远比 Serf 复杂，而每个方案的整体性很高，很难选择其中一部分加以组合，因此建议集群设计采用 Serf 的方案。
 
 ## 参考资料
 
